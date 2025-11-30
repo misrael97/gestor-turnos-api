@@ -22,7 +22,7 @@ class UsuarioController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:6',
-            'role_id' => 'required|exists:roles,id|in:1,2,3',
+            'role_id' => 'required|exists:roles,id|in:1,2,3,4',
             'sucursal_id' => 'nullable|exists:negocios,id',
         ]);
 
@@ -60,7 +60,7 @@ class UsuarioController extends Controller
             'name' => 'sometimes|string|max:255',
             'email' => 'sometimes|email|unique:users,email,' . $id,
             'password' => 'sometimes|string|min:6',
-            'role_id' => 'sometimes|exists:roles,id|in:1,2,3',
+            'role_id' => 'sometimes|exists:roles,id|in:1,2,3,4',
             'sucursal_id' => 'nullable|exists:negocios,id',
         ]);
 
