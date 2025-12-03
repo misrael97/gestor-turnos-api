@@ -12,6 +12,9 @@ Route::post('/login/verify-2fa', [AuthController::class, 'verify2FA']);
 Route::post('/login/resend-2fa', [AuthController::class, 'resend2FA']);
 Route::post('/register', [AuthController::class, 'register']);
 
+// 📺 RUTA PÚBLICA PARA DISPLAY DE TURNOS (sin autenticación)
+Route::get('/display/{sucursal_id}', [TurnoController::class, 'displayPublico']);
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -36,6 +39,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/turnos/{id}/confirmar', [TurnoController::class, 'confirmar']);
     Route::put('/turnos/{id}/cancelar', [TurnoController::class, 'cancelar']);
     Route::put('/turnos/{id}/reasignar', [TurnoController::class, 'reasignar']);
+    Route::put('/turnos/{id}/reasignar-cola', [TurnoController::class, 'reasignarCola']);
     
     // Rutas CRUD genéricas de turnos
     Route::apiResource('turnos', TurnoController::class);

@@ -210,4 +210,38 @@ class TurnoController extends Controller
 
         return $pdf->download("ticket_turno_{$turno->id}.pdf");
     }
+
+    /**
+     * 📺 DISPLAY PÚBLICO - Sin autenticación
+     * Muestra turnos activos de una sucursal específica
+     */
+    public function displayPublico($sucursal_id)
+    {
+        $turnos = Turno::with(['usuario', 'negocio'])
+            ->where('negocio_id', $sucursal_id)
+            ->whereIn('estado', ['espera', 'llamado'])
+            ->orderBy('updated_at', 'desc')
+            ->get();
+
+        return response()->json($turnos);
+    }
+
+    /**
+     * 🔄 Reasignar turno a una cola específica
+     */
+    public function reasignarCola(Request $r, $id)
+    {
+        $r->validate([
+            'cola' => 'required|string|max:100'
+        ]);
+
+        $turno = Turno::findOrFail($id);
+        $turno->update(['cola' => $r->cola]);
+        $turno->load(['usuario', 'negocio']);
+
+        return response()->json([
+            'message' => "Turno reasignado a cola: {$r->cola}",
+            'turno' => $turno
+        ]);
+    }
 }
