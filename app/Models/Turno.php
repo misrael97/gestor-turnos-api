@@ -6,7 +6,18 @@ use Illuminate\Database\Eloquent\Model;
 
 class Turno extends Model
 {
-    protected $fillable = ['usuario_id', 'negocio_id', 'estado', 'hora_inicio', 'hora_fin'];
+    protected $fillable = [
+        'usuario_id', 
+        'negocio_id', 
+        'estado', 
+        'hora_inicio', 
+        'hora_fin',
+        'cola',
+        'tipo',
+        'programado',
+        'fecha_programada',
+        'hora_programada'
+    ];
 
     public function usuario() {
         return $this->belongsTo(User::class);

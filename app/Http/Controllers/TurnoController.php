@@ -24,10 +24,14 @@ class TurnoController extends Controller
     // Crear un nuevo turno (cliente)
     public function store(Request $r)
     {
-        // Validar que venga el negocio_id y opcionalmente hora_deseada
+        // Validar que venga el negocio_id y opcionalmente campos de programación
         $r->validate([
             'negocio_id' => 'required|exists:negocios,id',
-            'hora_deseada' => 'nullable|date_format:Y-m-d H:i:s'
+            'hora_deseada' => 'nullable|date_format:Y-m-d H:i:s',
+            'tipo' => 'nullable|in:presencial,online',
+            'programado' => 'nullable|boolean',
+            'fecha_programada' => 'nullable|date',
+            'hora_programada' => 'nullable|date_format:H:i'
         ]);
 
         $userId = $r->user()->id;
@@ -62,12 +66,23 @@ class TurnoController extends Controller
             }
         }
 
-        $turno = Turno::create([
+        // Preparar datos del turno
+        $turnoData = [
             'usuario_id' => $userId,
             'negocio_id' => $negocioId,
             'estado' => 'espera',
             'hora_inicio' => $horaDeseada,
-        ]);
+            'tipo' => $r->tipo ?? 'presencial',
+            'programado' => $r->programado ?? false,
+        ];
+
+        // Agregar campos de programación si existen
+        if ($r->programado && $r->fecha_programada && $r->hora_programada) {
+            $turnoData['fecha_programada'] = $r->fecha_programada;
+            $turnoData['hora_programada'] = $r->hora_programada;
+        }
+
+        $turno = Turno::create($turnoData);
 
         // Cargar relaciones
         $turno->load(['usuario', 'negocio']);
