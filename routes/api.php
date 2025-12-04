@@ -6,6 +6,7 @@ use App\Http\Controllers\TurnoController;
 use App\Http\Controllers\ReporteController;
 use App\Http\Controllers\AlertaController;
 use App\Http\Controllers\UsuarioController;
+use App\Http\Controllers\NotificationController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/login/verify-2fa', [AuthController::class, 'verify2FA']);
@@ -30,6 +31,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // Alias para sucursales (mismo que negocios)
     Route::get('/sucursales', [NegocioController::class, 'index']);
     Route::get('/sucursales/{id}', [NegocioController::class, 'show']);
+    
+    // 🔔 RUTAS DE NOTIFICACIONES PUSH (FCM)
+    Route::post('/fcm-tokens', [NotificationController::class, 'storeToken']);
+    Route::delete('/fcm-tokens/{token}', [NotificationController::class, 'deleteToken']);
+    Route::post('/notifications/user/{userId}', [NotificationController::class, 'sendToUser']);
+    Route::post('/notifications/multiple', [NotificationController::class, 'sendToMultipleUsers']);
+    Route::get('/notifications/tokens/{userId}', [NotificationController::class, 'getUserTokens']);
     
     // Rutas específicas de turnos (ANTES de apiResource)
     Route::get('/turnos/historial', [TurnoController::class, 'historial']);

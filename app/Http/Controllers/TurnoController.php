@@ -6,10 +6,13 @@ use Illuminate\Http\Request;
 use App\Models\Turno;
 use App\Models\User;
 use App\Models\Negocio;
+use App\Models\FcmToken;
 use Carbon\Carbon;
 use App\Jobs\AlertaTurnoJob;
 use App\Jobs\CancelarTurnoJob;
 use App\Jobs\AutoCancelarTurnoJob;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class TurnoController extends Controller
 {
@@ -132,10 +135,96 @@ class TurnoController extends Controller
 
         $turno->update(['estado' => 'llamado']);
 
+        // 🔔 ENVIAR NOTIFICACIÓN PUSH AL USUARIO
+        $this->enviarNotificacionTurnoLlamado($turno);
+
         // Programar auto-cancelación en 30 segundos
         dispatch(new AutoCancelarTurnoJob($turno))->delay(now()->addSeconds(30));
 
         return response()->json(['message' => 'Turno llamado', 'turno' => $turno]);
+    }
+
+    /**
+     * Enviar notificación push cuando se llama un turno
+     */
+    private function enviarNotificacionTurnoLlamado($turno)
+    {
+        $tokens = FcmToken::active()
+            ->where('user_id', $turno->usuario_id)
+            ->pluck('token')
+            ->toArray();
+
+        if (empty($tokens)) {
+            return;
+        }
+
+        $projectId = env('FIREBASE_PROJECT_ID');
+        $credentialsPath = base_path(env('FIREBASE_CREDENTIALS'));
+
+        if (!$projectId || !file_exists($credentialsPath)) {
+            return;
+        }
+
+        $accessToken = $this->getFirebaseAccessToken($credentialsPath);
+        if (!$accessToken) {
+            return;
+        }
+
+        $negocio = $turno->negocio ?? Negocio::find($turno->negocio_id);
+
+        $data = [
+            'turnoId' => (string)$turno->id,
+            'type' => 'turno_llamado',
+            'sucursal' => $negocio->nombre
+        ];
+
+        foreach ($tokens as $token) {
+            try {
+                Http::withHeaders([
+                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Content-Type' => 'application/json'
+                ])->post("https://fcm.googleapis.com/v1/projects/{$projectId}/messages:send", [
+                    'message' => [
+                        'token' => $token,
+                        'notification' => [
+                            'title' => '¡Tu turno ha sido llamado!',
+                            'body' => "Por favor acércate a {$negocio->nombre}. Turno #{$turno->id}"
+                        ],
+                        'data' => $data,
+                        'webpush' => [
+                            'notification' => [
+                                'icon' => '/assets/icon/favicon.png',
+                                'badge' => '/assets/icon/favicon.png',
+                                'requireInteraction' => true
+                            ]
+                        ]
+                    ]
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Error enviando notificación FCM v1: ' . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Obtener Access Token de Firebase
+     */
+    private function getFirebaseAccessToken(string $credentialsPath)
+    {
+        try {
+            putenv('GOOGLE_APPLICATION_CREDENTIALS=' . $credentialsPath);
+            
+            $client = new \Google\Client();
+            $client->useApplicationDefaultCredentials();
+            $client->setScopes(['https://www.googleapis.com/auth/firebase.messaging']);
+            
+            $token = $client->fetchAccessTokenWithAssertion();
+            
+            return $token['access_token'] ?? null;
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo access token: ' . $e->getMessage());
+            return null;
+        }
     }
 
     // Ver un turno específico
