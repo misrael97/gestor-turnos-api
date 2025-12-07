@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
-use App\Notifications\TwoFactorCodeNotification;
+use App\Services\ResendMailService;
 use Carbon\Carbon;
 
 
@@ -70,8 +70,9 @@ class AuthController extends Controller
         $user->two_factor_verified = false;
         $user->save();
         
-        // Enviar código por email
-        $user->notify(new TwoFactorCodeNotification($code));
+        // Enviar código por email usando Resend
+        $mailService = new ResendMailService();
+        $mailService->sendTwoFactorCode($user->email, $user->name, $code);
         
         $response = [
             'requires_2fa' => true,
@@ -159,8 +160,9 @@ class AuthController extends Controller
         $user->two_factor_expires_at = Carbon::now()->addMinutes(10);
         $user->save();
 
-        // Reenviar código por email
-        $user->notify(new TwoFactorCodeNotification($code));
+        // Reenviar código por email usando Resend
+        $mailService = new ResendMailService();
+        $mailService->sendTwoFactorCode($user->email, $user->name, $code);
 
         return response()->json([
             'message' => 'Código reenviado exitosamente a tu email'
