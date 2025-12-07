@@ -135,13 +135,96 @@ class TurnoController extends Controller
 
         $turno->update(['estado' => 'llamado']);
 
-        // 🔔 ENVIAR NOTIFICACIÓN PUSH AL USUARIO
+        // ENVIAR NOTIFICACIÓN PUSH AL USUARIO
         $this->enviarNotificacionTurnoLlamado($turno);
+
+        // NOTIFICAR A LOS SIGUIENTES 3 EN LA COLA
+        $this->notificarSiguientesTresEnCola($turno->negocio_id);
 
         // Programar auto-cancelación en 30 segundos
         dispatch(new AutoCancelarTurnoJob($turno))->delay(now()->addSeconds(30));
 
         return response()->json(['message' => 'Turno llamado', 'turno' => $turno]);
+    }
+
+    /**
+     * Notificar a los siguientes 3 turnos en espera
+     */
+    private function notificarSiguientesTresEnCola($negocioId)
+    {
+        $turnosEnEspera = Turno::where('negocio_id', $negocioId)
+            ->where('estado', 'espera')
+            ->orderBy('created_at', 'asc')
+            ->take(3)
+            ->get();
+
+        foreach ($turnosEnEspera as $index => $turno) {
+            $posicion = $index + 1;
+            $this->enviarNotificacionPosicionEnCola($turno, $posicion);
+        }
+    }
+
+    /**
+     * Enviar notificación de posición en cola
+     */
+    private function enviarNotificacionPosicionEnCola($turno, $posicion)
+    {
+        $tokens = FcmToken::active()
+            ->where('user_id', $turno->usuario_id)
+            ->pluck('token')
+            ->toArray();
+
+        if (empty($tokens)) {
+            return;
+        }
+
+        $projectId = env('FIREBASE_PROJECT_ID');
+        $credentialsPath = base_path(env('FIREBASE_CREDENTIALS'));
+
+        if (!$projectId || !file_exists($credentialsPath)) {
+            return;
+        }
+
+        $accessToken = $this->getFirebaseAccessToken($credentialsPath);
+        if (!$accessToken) {
+            return;
+        }
+
+        $negocio = $turno->negocio ?? Negocio::find($turno->negocio_id);
+        $mensaje = $posicion === 1 
+            ? "¡Eres el siguiente! Prepárate para ser atendido en {$negocio->nombre}"
+            : "Faltan {$posicion} personas delante de ti en {$negocio->nombre}";
+
+        foreach ($tokens as $token) {
+            try {
+                Http::withHeaders([
+                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Content-Type' => 'application/json'
+                ])->post("https://fcm.googleapis.com/v1/projects/{$projectId}/messages:send", [
+                    'message' => [
+                        'token' => $token,
+                        'notification' => [
+                            'title' => $posicion === 1 ? '¡Tu turno es el siguiente!' : "Faltan {$posicion} personas",
+                            'body' => $mensaje
+                        ],
+                        'data' => [
+                            'turnoId' => (string)$turno->id,
+                            'type' => 'posicion_cola',
+                            'posicion' => (string)$posicion,
+                            'sucursal' => $negocio->nombre
+                        ],
+                        'webpush' => [
+                            'notification' => [
+                                'icon' => '/assets/icon/favicon.png',
+                                'badge' => '/assets/icon/favicon.png'
+                            ]
+                        ]
+                    ]
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Error enviando notificación de posición en cola: ' . $e->getMessage());
+            }
+        }
     }
 
     /**
