@@ -3,12 +3,10 @@
 namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue; // 1. Ya lo tienes aquí, bien.
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-// 2. EL CAMBIO CLAVE ESTÁ AQUÍ ABAJO (agregué 'implements ShouldQueue')
-class TwoFactorCodeNotification extends Notification implements ShouldQueue
+class TwoFactorCodeNotification extends Notification
 {
     use Queueable;
 
