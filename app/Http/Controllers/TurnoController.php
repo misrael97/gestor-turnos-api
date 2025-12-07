@@ -127,24 +127,58 @@ class TurnoController extends Controller
     // Llamar siguiente turno (para admin)
     public function llamarSiguiente()
     {
-        $turno = Turno::where('estado', 'espera')->orderBy('created_at', 'asc')->first();
+        try {
+            Log::info('🔔 Iniciando llamarSiguiente');
+            
+            $turno = Turno::where('estado', 'espera')->orderBy('created_at', 'asc')->first();
+            Log::info('✅ Turno encontrado: ' . ($turno ? $turno->id : 'ninguno'));
 
-        if (!$turno) {
-            return response()->json(['message' => 'No hay turnos en espera']);
+            if (!$turno) {
+                return response()->json(['message' => 'No hay turnos en espera']);
+            }
+
+            Log::info('📝 Actualizando estado del turno a "llamado"');
+            $turno->update(['estado' => 'llamado']);
+            Log::info('✅ Estado actualizado correctamente');
+
+            // ENVIAR NOTIFICACIÓN PUSH AL USUARIO (con manejo de errores)
+            try {
+                Log::info('📧 Enviando notificación de turno llamado');
+                $this->enviarNotificacionTurnoLlamado($turno);
+                Log::info('✅ Notificación enviada');
+            } catch (\Exception $e) {
+                Log::error('❌ Error enviando notificación de turno llamado: ' . $e->getMessage());
+            }
+
+            // NOTIFICAR A LOS SIGUIENTES 3 EN LA COLA (con manejo de errores)
+            try {
+                Log::info('📧 Notificando siguientes 3 en cola');
+                $this->notificarSiguientesTresEnCola($turno->negocio_id);
+                Log::info('✅ Notificaciones de cola enviadas');
+            } catch (\Exception $e) {
+                Log::error('❌ Error notificando siguientes en cola: ' . $e->getMessage());
+            }
+
+            // Programar auto-cancelación en 30 segundos (con manejo de errores)
+            try {
+                Log::info('⏰ Programando auto-cancelación');
+                dispatch(new AutoCancelarTurnoJob($turno))->delay(now()->addSeconds(30));
+                Log::info('✅ Auto-cancelación programada');
+            } catch (\Exception $e) {
+                Log::error('❌ Error programando auto-cancelación: ' . $e->getMessage());
+            }
+
+            Log::info('🎉 llamarSiguiente completado exitosamente');
+            return response()->json(['message' => 'Turno llamado', 'turno' => $turno]);
+            
+        } catch (\Exception $e) {
+            Log::error('💥 ERROR CRÍTICO en llamarSiguiente: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'error' => 'Error al llamar siguiente turno',
+                'message' => $e->getMessage()
+            ], 500);
         }
-
-        $turno->update(['estado' => 'llamado']);
-
-        // ENVIAR NOTIFICACIÓN PUSH AL USUARIO
-        $this->enviarNotificacionTurnoLlamado($turno);
-
-        // NOTIFICAR A LOS SIGUIENTES 3 EN LA COLA
-        $this->notificarSiguientesTresEnCola($turno->negocio_id);
-
-        // Programar auto-cancelación en 30 segundos
-        dispatch(new AutoCancelarTurnoJob($turno))->delay(now()->addSeconds(30));
-
-        return response()->json(['message' => 'Turno llamado', 'turno' => $turno]);
     }
 
     /**
