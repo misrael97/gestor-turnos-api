@@ -127,17 +127,28 @@ class NotificationController extends Controller
         $projectId = env('FIREBASE_PROJECT_ID');
         $credentialsPath = base_path(env('FIREBASE_CREDENTIALS'));
 
+        // Logging detallado para diagnóstico
+        Log::info('🔍 Verificando configuración de Firebase');
+        Log::info('Project ID: ' . ($projectId ?? 'NULL'));
+        Log::info('Credentials Path: ' . $credentialsPath);
+        Log::info('File exists: ' . (file_exists($credentialsPath) ? 'YES' : 'NO'));
+
         if (!$projectId || !file_exists($credentialsPath)) {
-            Log::error('Firebase no configurado correctamente. Verifica FIREBASE_PROJECT_ID y FIREBASE_CREDENTIALS en .env');
+            Log::error('❌ Firebase no configurado correctamente');
+            Log::error('Project ID presente: ' . ($projectId ? 'SI' : 'NO'));
+            Log::error('Archivo existe: ' . (file_exists($credentialsPath) ? 'SI' : 'NO'));
             return ['error' => 'FCM no configurado'];
         }
 
+        Log::info('✅ Configuración de Firebase OK, obteniendo access token...');
         $accessToken = $this->getAccessToken($credentialsPath);
 
         if (!$accessToken) {
-            Log::error('No se pudo obtener access token de Firebase');
+            Log::error('❌ No se pudo obtener access token de Firebase');
             return ['error' => 'Error de autenticación con Firebase'];
         }
+
+        Log::info('✅ Access token obtenido correctamente');
 
         $results = [];
 
