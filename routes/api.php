@@ -13,8 +13,19 @@ Route::post('/login/verify-2fa', [AuthController::class, 'verify2FA']);
 Route::post('/login/resend-2fa', [AuthController::class, 'resend2FA']);
 Route::post('/register', [AuthController::class, 'register']);
 
-// 📺 RUTA PÚBLICA PARA DISPLAY DE TURNOS (sin autenticación)
+// RUTA PÚBLICA PARA DISPLAY DE TURNOS (sin autenticación)
 Route::get('/display/{sucursal_id}', [TurnoController::class, 'displayPublico']);
+
+// ENDPOINT TEMPORAL PARA VER LOGS (ELIMINAR EN PRODUCCIÓN)
+Route::get('/debug/logs', function() {
+    $logPath = storage_path('logs/laravel.log');
+    if (!file_exists($logPath)) {
+        return response()->json(['error' => 'No log file found']);
+    }
+    $logs = file($logPath);
+    $lastLines = array_slice($logs, -100); // Últimas 100 líneas
+    return response('<pre>' . implode('', $lastLines) . '</pre>');
+});
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
