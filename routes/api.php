@@ -49,6 +49,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/notifications/user/{userId}', [NotificationController::class, 'sendToUser']);
     Route::post('/notifications/multiple', [NotificationController::class, 'sendToMultipleUsers']);
     Route::get('/notifications/tokens/{userId}', [NotificationController::class, 'getUserTokens']);
+    Route::post('/notifications/test', [NotificationController::class, 'testNotification']); // 🧪 PRUEBA
     
     // Rutas específicas de turnos (ANTES de apiResource)
     Route::get('/turnos/historial', [TurnoController::class, 'historial']);

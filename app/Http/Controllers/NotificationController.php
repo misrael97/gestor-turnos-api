@@ -228,4 +228,40 @@ class NotificationController extends Controller
             'data' => $tokens
         ]);
     }
+
+    /**
+     * 🧪 Probar notificación push al usuario autenticado
+     */
+    public function testNotification(Request $request)
+    {
+        $user = $request->user();
+        
+        Log::info('🧪 Probando notificación para usuario: ' . $user->id);
+        
+        $tokens = FcmToken::active()->where('user_id', $user->id)->pluck('token')->toArray();
+        
+        Log::info('📱 Tokens encontrados: ' . count($tokens));
+        
+        if (empty($tokens)) {
+            return response()->json([
+                'error' => 'No hay tokens FCM registrados para tu usuario',
+                'user_id' => $user->id,
+                'message' => 'Asegúrate de que la PWA haya solicitado permisos de notificación'
+            ], 404);
+        }
+
+        $result = $this->sendFcmNotification(
+            $tokens,
+            '🧪 Prueba de Notificación',
+            'Si ves esto, las notificaciones funcionan correctamente! ✅',
+            ['type' => 'test', 'timestamp' => now()->toString()]
+        );
+
+        return response()->json([
+            'message' => 'Notificación de prueba enviada',
+            'user' => $user->name,
+            'tokens_count' => count($tokens),
+            'results' => $result
+        ]);
+    }
 }
