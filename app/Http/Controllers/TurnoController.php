@@ -100,19 +100,65 @@ class TurnoController extends Controller
     // Confirmar turno
     public function confirmar($id)
     {
-        $turno = Turno::findOrFail($id);
+        $turno = Turno::with(['usuario', 'negocio'])->findOrFail($id);
+        
+        // Validar que el turno no esté ya cancelado o atendido
+        if ($turno->estado === 'cancelado') {
+            return response()->json([
+                'error' => 'No se puede confirmar un turno cancelado'
+            ], 422);
+        }
+        
+        if ($turno->estado === 'atendido') {
+            return response()->json([
+                'error' => 'Este turno ya fue atendido'
+            ], 422);
+        }
+        
+        // Actualizar estado
         $turno->update([
             'estado' => 'atendido',
             'hora_fin' => now()
         ]);
+        
+        // Enviar notificación al cliente
+        try {
+            $this->enviarNotificacionTurnoAtendido($turno);
+        } catch (\Exception $e) {
+            Log::error('Error enviando notificación de turno atendido: ' . $e->getMessage());
+        }
+        
         return response()->json(['message' => 'Turno confirmado', 'turno' => $turno]);
     }
 
     // Cancelar turno (manual o automático)
     public function cancelar($id)
     {
-        $turno = Turno::findOrFail($id);
+        $turno = Turno::with(['usuario', 'negocio'])->findOrFail($id);
+        
+        // Validar que el turno no esté ya atendido
+        if ($turno->estado === 'atendido') {
+            return response()->json([
+                'error' => 'No se puede cancelar un turno que ya fue atendido'
+            ], 422);
+        }
+        
+        if ($turno->estado === 'cancelado') {
+            return response()->json([
+                'error' => 'Este turno ya fue cancelado'
+            ], 422);
+        }
+        
+        // Actualizar estado
         $turno->update(['estado' => 'cancelado']);
+        
+        // Enviar notificación al cliente
+        try {
+            $this->enviarNotificacionTurnoCancelado($turno);
+        } catch (\Exception $e) {
+            Log::error('Error enviando notificación de turno cancelado: ' . $e->getMessage());
+        }
+        
         return response()->json(['message' => 'Turno cancelado', 'turno' => $turno]);
     }
 
@@ -460,9 +506,194 @@ class TurnoController extends Controller
         $turno->update(['cola' => $r->cola]);
         $turno->load(['usuario', 'negocio']);
 
+        // Enviar notificación al cliente
+        try {
+            $this->enviarNotificacionColaAsignada($turno, $r->cola);
+        } catch (\Exception $e) {
+            Log::error('Error enviando notificación de cola asignada: ' . $e->getMessage());
+        }
+
         return response()->json([
             'message' => "Turno reasignado a cola: {$r->cola}",
             'turno' => $turno
         ]);
+    }
+
+    /**
+     * Enviar notificación cuando un turno es atendido
+     */
+    private function enviarNotificacionTurnoAtendido($turno)
+    {
+        $tokens = FcmToken::active()
+            ->where('user_id', $turno->usuario_id)
+            ->pluck('token')
+            ->toArray();
+
+        if (empty($tokens)) {
+            return;
+        }
+
+        $projectId = env('FIREBASE_PROJECT_ID');
+        $credentialsPath = base_path(env('FIREBASE_CREDENTIALS'));
+
+        if (!$projectId || !file_exists($credentialsPath)) {
+            return;
+        }
+
+        $accessToken = $this->getFirebaseAccessToken($credentialsPath);
+        if (!$accessToken) {
+            return;
+        }
+
+        $negocio = $turno->negocio ?? Negocio::find($turno->negocio_id);
+
+        foreach ($tokens as $token) {
+            try {
+                Http::withHeaders([
+                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Content-Type' => 'application/json'
+                ])->post("https://fcm.googleapis.com/v1/projects/{$projectId}/messages:send", [
+                    'message' => [
+                        'token' => $token,
+                        'notification' => [
+                            'title' => '✅ Turno Atendido',
+                            'body' => "Tu turno en {$negocio->nombre} ha sido atendido. ¡Gracias por tu visita!"
+                        ],
+                        'data' => [
+                            'turnoId' => (string)$turno->id,
+                            'type' => 'turno_atendido',
+                            'sucursal' => $negocio->nombre
+                        ],
+                        'webpush' => [
+                            'notification' => [
+                                'icon' => '/assets/icon/favicon.png',
+                                'badge' => '/assets/icon/favicon.png'
+                            ]
+                        ]
+                    ]
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Error enviando notificación de turno atendido: ' . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Enviar notificación cuando un turno es cancelado
+     */
+    private function enviarNotificacionTurnoCancelado($turno)
+    {
+        $tokens = FcmToken::active()
+            ->where('user_id', $turno->usuario_id)
+            ->pluck('token')
+            ->toArray();
+
+        if (empty($tokens)) {
+            return;
+        }
+
+        $projectId = env('FIREBASE_PROJECT_ID');
+        $credentialsPath = base_path(env('FIREBASE_CREDENTIALS'));
+
+        if (!$projectId || !file_exists($credentialsPath)) {
+            return;
+        }
+
+        $accessToken = $this->getFirebaseAccessToken($credentialsPath);
+        if (!$accessToken) {
+            return;
+        }
+
+        $negocio = $turno->negocio ?? Negocio::find($turno->negocio_id);
+
+        foreach ($tokens as $token) {
+            try {
+                Http::withHeaders([
+                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Content-Type' => 'application/json'
+                ])->post("https://fcm.googleapis.com/v1/projects/{$projectId}/messages:send", [
+                    'message' => [
+                        'token' => $token,
+                        'notification' => [
+                            'title' => '❌ Turno Cancelado',
+                            'body' => "Tu turno en {$negocio->nombre} ha sido cancelado. Puedes solicitar uno nuevo."
+                        ],
+                        'data' => [
+                            'turnoId' => (string)$turno->id,
+                            'type' => 'turno_cancelado',
+                            'sucursal' => $negocio->nombre
+                        ],
+                        'webpush' => [
+                            'notification' => [
+                                'icon' => '/assets/icon/favicon.png',
+                                'badge' => '/assets/icon/favicon.png'
+                            ]
+                        ]
+                    ]
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Error enviando notificación de turno cancelado: ' . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Enviar notificación cuando un turno es asignado a una cola
+     */
+    private function enviarNotificacionColaAsignada($turno, $nombreCola)
+    {
+        $tokens = FcmToken::active()
+            ->where('user_id', $turno->usuario_id)
+            ->pluck('token')
+            ->toArray();
+
+        if (empty($tokens)) {
+            return;
+        }
+
+        $projectId = env('FIREBASE_PROJECT_ID');
+        $credentialsPath = base_path(env('FIREBASE_CREDENTIALS'));
+
+        if (!$projectId || !file_exists($credentialsPath)) {
+            return;
+        }
+
+        $accessToken = $this->getFirebaseAccessToken($credentialsPath);
+        if (!$accessToken) {
+            return;
+        }
+
+        $negocio = $turno->negocio ?? Negocio::find($turno->negocio_id);
+
+        foreach ($tokens as $token) {
+            try {
+                Http::withHeaders([
+                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Content-Type' => 'application/json'
+                ])->post("https://fcm.googleapis.com/v1/projects/{$projectId}/messages:send", [
+                    'message' => [
+                        'token' => $token,
+                        'notification' => [
+                            'title' => '📍 Cola Asignada',
+                            'body' => "Tu turno ha sido asignado a: {$nombreCola}. Por favor dirígete a esa área."
+                        ],
+                        'data' => [
+                            'turnoId' => (string)$turno->id,
+                            'type' => 'cola_asignada',
+                            'cola' => $nombreCola,
+                            'sucursal' => $negocio->nombre
+                        ],
+                        'webpush' => [
+                            'notification' => [
+                                'icon' => '/assets/icon/favicon.png',
+                                'badge' => '/assets/icon/favicon.png'
+                            ]
+                        ]
+                    ]
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Error enviando notificación de cola asignada: ' . $e->getMessage());
+            }
+        }
     }
 }
