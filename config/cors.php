@@ -6,7 +6,16 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['http://localhost:8100', 'http://127.0.0.1:8100', 'http://192.168.1.6:8100', 'http://192.168.1.15:8100','http://localhost:4200'],
+    'allowed_origins' => [
+        'http://localhost:8100', 
+        'http://127.0.0.1:8100', 
+        'http://192.168.1.6:8100', 
+        'http://192.168.1.15:8100',
+        'http://localhost:4200',
+        'https://panel.gturnos.tech',
+        'https://gturnos.tech',
+        'https://sucursal.gturnos.tech'
+    ],
 
     'allowed_origins_patterns' => [],
 
